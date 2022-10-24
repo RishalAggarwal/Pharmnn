@@ -43,7 +43,7 @@ parser.add_argument('--steplr',default=150,type=int,help='when to step the learn
 
 parser.add_argument('--lr',default=0,type=float,help='learning rate')
 parser.add_argument('--solver',default='adam',help='solver to use (sgd|adam)')
-parser.add_argument('--clip',default=0.0,type=float,help='gradient clipping value')
+parser.add_argument('--clip',default=1.0,type=float,help='gradient clipping value')
 parser.add_argument('--weight_decay',default=0.0,type=float,help='weight decay')
 parser.add_argument('--dropout',default=0.0,type=float,help='dropout percentage')
 parser.add_argument('--conv_res',default=32,type=int,help='convolution layer resolution')
@@ -333,6 +333,7 @@ def log_metrics(prefix, labels, predicts,epoch):
     predicts = np.array(predicts)
     
     metrics = {'epoch':epoch}
+    f1_total=0
     for cname in category:
         i = feat_to_int[cname]
         L = labels[:,i]
@@ -344,9 +345,12 @@ def log_metrics(prefix, labels, predicts,epoch):
             metrics[prefix+' '+cname+' Precision'] = sklearn.metrics.precision_score(L, np.round(P).astype(int))
             metrics[prefix+' '+cname+' Recall'] = sklearn.metrics.recall_score(L, np.round(P).astype(int))
             metrics[prefix+' '+cname+' F1'] = sklearn.metrics.f1_score(L, np.round(P).astype(int))
+            if 'Test' in prefix:
+                f1_total+=metrics[prefix+' '+cname+' F1']
             metrics[prefix+' '+cname+' AUC'] = sklearn.metrics.roc_auc_score(L, P)
         except ValueError:
             pass
+    metrics['Total Test F1'] = f1_total
 
     print(metrics)
     wandb.log(metrics)
