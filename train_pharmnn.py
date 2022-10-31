@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import torch
-from gridData import Grid
 import numpy as np
 from numpy import argmax
 from numpy import array
@@ -41,6 +40,7 @@ def parse_arguments():
     parser.add_argument('--train_data',required=True,help='data to train with',default="data_train_pdb.txt")
     parser.add_argument('--test_data',default="",help='data to test with')
     parser.add_argument('--pickle_only',help="Create pickle files of the data only; don't train",action='store_true')
+    parser.add_argument('--top_dir',default='.',help='root directory of data')
     parser.add_argument('--batch_size',default=256,type=int,help='batch size')
     parser.add_argument('--epochs',default=265,type=int,help='number epochs')
     parser.add_argument('--steplr',default=150,type=int,help='when to step the learning rate')
@@ -97,20 +97,21 @@ def log_metrics(prefix, labels, predicts,epoch,category,feat_to_int,int_to_feat)
     print(metrics)
     wandb.log(metrics)
     
-def get_dataset(fname, args):
+def get_dataset(fname, args,feat_to_int,int_to_feat,dump=True):
     '''Create a dataset.  If a pkl file is not passed, create one for faster loading later'''
     if fname.endswith('.pkl'):
         dataset = pickle.load(open(fname,'rb'))
         dataset.rotate = args.rotate
-        #TODO: factor out parameters that shouldn't be pickled
+        #TODO: factor out parameters that shouldn't be pickled, basically just pickle the cache (create a new class)
         dataset.use_gist = args.use_gist
         dataset.gmaker = MyGridMaker(resolution=0.5, dimension=args.grid_dimension) 
         dataset.dims = dataset.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())        
         return dataset
     else:
-        dataset = PharmacophoreDataset(txt_file=fname, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist)
-        prefix,ext = os.path.splitext(fname)
-        pickle.dump(dataset, open(prefix+'.pkl','wb'))
+        dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist)
+        if dump:
+            prefix,ext = os.path.splitext(fname)
+            pickle.dump(dataset, open(prefix+'.pkl','wb'))
         return dataset
 
 def train(args):
@@ -146,10 +147,10 @@ def train(args):
     #Creation of test set/loader (individual system)
 
 
-    dataset1 = get_dataset(train_data,args)
+    dataset1 = get_dataset(train_data,args,feat_to_int,int_to_feat)
     trainloader = DataLoader(dataset1, batch_size=args.batch_size, num_workers=0, shuffle=True,drop_last=False)
 
-    dataset2 = get_dataset(test_data,args)
+    dataset2 = get_dataset(test_data,args,feat_to_int,int_to_feat)
     testloader = DataLoader(dataset2, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=False)
 
 
@@ -177,12 +178,12 @@ def train(args):
         optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     clip_value = args.clip
-
+    #TODO: update learning rate at plateau
     change_lr = StepLR(optimizer, step_size = 1, gamma=0.1)
     steplr = args.steplr
 
     print("starting training")
-
+    #TODO: early stopping
     for epoch in range(args.epochs):
         running_loss = 0.0
         testloss = 0.
@@ -233,9 +234,9 @@ def train(args):
         if epoch != 0 and (epoch % steplr) == 0:
             change_lr.step()
             steplr = steplr//2  #each step has twice as few iterations
-        
+    #TODO: save best performing model    
     print("finished training")
-    torch.save(net, os.path.join(wandb.run.dir, "model.pkl"))
+    torch.save(net, "model/"+ wandb.run + "_model.pkl")
 
 if __name__ == '__main__':
 

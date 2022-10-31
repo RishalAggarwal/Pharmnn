@@ -12,6 +12,10 @@ import torch.nn.init as init
 import torch.optim as optim
 import argparse
 import molgrid
+import pickle
+import se3cnn
+from se3cnn.image.convolution import SE3Convolution
+from se3cnn.image.gated_block import GatedBlock
 try:
     from molgrid.openbabel import pybel
 except ImportError:
