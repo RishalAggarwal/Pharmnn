@@ -11,6 +11,7 @@ import torchvision
 from torch.autograd import Variable
 from torchvision import transforms, utils
 from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import sklearn.metrics
 import wandb
 import torch.nn as nn
@@ -37,13 +38,15 @@ pybel.ob.obErrorLog.StopLogging() #without this wandb will deadlock when ob fill
 
 def parse_arguments():
     parser = argparse.ArgumentParser('Train a CNN on GIST data to predict pharmacophore feature.')
+    parser.add_argument('--wandb_name',required=False,help='data to train with',default=None)
     parser.add_argument('--train_data',required=True,help='data to train with',default="data_train_pdb.txt")
     parser.add_argument('--test_data',default="",help='data to test with')
     parser.add_argument('--pickle_only',help="Create pickle files of the data only; don't train",action='store_true')
     parser.add_argument('--top_dir',default='.',help='root directory of data')
     parser.add_argument('--batch_size',default=256,type=int,help='batch size')
     parser.add_argument('--epochs',default=265,type=int,help='number epochs')
-    parser.add_argument('--steplr',default=150,type=int,help='when to step the learning rate')
+    parser.add_argument('--steplr',default=50,type=int,help='when to step the learning rate')
+    parser.add_argument('--patience',default=35,type=int,help='when to step the learning rate')
 
     parser.add_argument('--lr',default=0,type=float,help='learning rate')
     parser.add_argument('--solver',default='adam',help='solver to use (sgd|adam)')
@@ -96,6 +99,7 @@ def log_metrics(prefix, labels, predicts,epoch,category,feat_to_int,int_to_feat)
 
     print(metrics)
     wandb.log(metrics)
+    return metrics
     
 def get_dataset(fname, args,feat_to_int,int_to_feat,dump=True):
     '''Create a dataset.  If a pkl file is not passed, create one for faster loading later'''
@@ -131,7 +135,7 @@ def train(args):
     torch.manual_seed(args.seed)
     molgrid.set_random_seed(args.seed)
 
-    wandb.init(project="pharmnn", config=args)
+    wandb.init(project="pharmnn", config=args, name=args.wandb_name)
 
     train_data = args.train_data
     test_data = args.test_data
@@ -164,6 +168,8 @@ def train(args):
     net.to('cuda')
     wandb.watch(net)
 
+    best_f1=0
+
     paramcnt = sum([np.prod(p.size()) for p in  filter(lambda p: p.requires_grad, net.parameters())])
     wandb.log({'Parameters': paramcnt})
     print("Parameters",paramcnt)
@@ -181,6 +187,8 @@ def train(args):
     #TODO: update learning rate at plateau
     change_lr = StepLR(optimizer, step_size = 1, gamma=0.1)
     steplr = args.steplr
+    scheduler = ReduceLROnPlateau(optimizer, 'max',patience=args.patience,min_lr=1e-6)
+    
 
     print("starting training")
     #TODO: early stopping
@@ -212,7 +220,7 @@ def train(args):
             labels += data['label'].cpu().tolist()
 
         wandb.log({'Epoch':epoch})
-        log_metrics('Train',labels,predicted,epoch,category,feat_to_int,int_to_feat)
+        train_metrics = log_metrics('Train',labels,predicted,epoch,category,feat_to_int,int_to_feat)
         print(f"Epoch {epoch} time {time.time()-start}")
         print("started testing")
         test_predict = []
@@ -228,15 +236,20 @@ def train(args):
                 test_labels += data['label'].cpu().tolist()
         print('Learning rate is ', change_lr.get_last_lr())
         
-        log_metrics('Test',test_labels,test_predict,epoch,category,feat_to_int,int_to_feat)
+        test_metrics=log_metrics('Test',test_labels,test_predict,epoch,category,feat_to_int,int_to_feat)
         wandb.log({'Learning Rate': change_lr.get_last_lr()[-1]})
 
-        if epoch != 0 and (epoch % steplr) == 0:
+        #TODO: update lr on plateau
+        scheduler.step(test_metrics['Total Test F1'])
+        '''if epoch != 0 and (epoch % steplr) == 0:
             change_lr.step()
-            steplr = steplr//2  #each step has twice as few iterations
-    #TODO: save best performing model    
+            steplr = steplr//2  #each step has twice as few iterations'''
+        if test_metrics['Total Test F1']>best_f1:
+            best_f1=test_metrics['Total Test F1']
+            wandb.run.summary["Best Test F1"] = best_f1
+            torch.save(net, "models/"+ wandb.run.name + "_best_model.pkl")
+        torch.save(net, "models/"+ wandb.run.name + "_last_model.pkl")  
     print("finished training")
-    torch.save(net, "model/"+ wandb.run + "_model.pkl")
 
 if __name__ == '__main__':
 
