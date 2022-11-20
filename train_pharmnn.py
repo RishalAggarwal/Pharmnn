@@ -105,17 +105,31 @@ def get_dataset(fname, args,feat_to_int,int_to_feat,dump=True):
     '''Create a dataset.  If a pkl file is not passed, create one for faster loading later'''
     if fname.endswith('.pkl'):
         dataset = pickle.load(open(fname,'rb'))
-        dataset.rotate = args.rotate
+        cache=None
+        coordcache=None
+        classcnts=None
+        #cache is a list of datapoints
+        if isinstance(dataset,list):
+            cache=dataset[0]
+            coordcache=dataset[1]
+            classcnts=dataset[2]
+        #if loaded object is pharmacophoredataset and not cache
+        else:
+            cache=dataset.cache
+            classcnts=dataset.classcnts
+            coordcache=dataset.coordcache
+        dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist,cache=cache,classcnts=classcnts,coordcache=coordcache)
+        #dataset.rotate = args.rotate
         #TODO: factor out parameters that shouldn't be pickled, basically just pickle the cache (create a new class)
-        dataset.use_gist = args.use_gist
-        dataset.gmaker = MyGridMaker(resolution=0.5, dimension=args.grid_dimension) 
-        dataset.dims = dataset.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())        
+        #dataset.use_gist = args.use_gist
+        #dataset.gmaker = MyGridMaker(resolution=0.5, dimension=args.grid_dimension) 
+        #dataset.dims = dataset.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())        
         return dataset
     else:
         dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist)
         if dump:
             prefix,ext = os.path.splitext(fname)
-            pickle.dump(dataset, open(prefix+'.pkl','wb'))
+            pickle.dump([dataset.cache,dataset.coordcache,dataset.classcnts], open(prefix+'.pkl','wb'))
         return dataset
 
 def train(args):

@@ -47,73 +47,78 @@ class MyGridMaker:
 
 #Dataset class
 class PharmacophoreDataset(Dataset):
-    def __init__(self, txt_file, feat_to_int,int_to_feat,top_dir='.',grid_dimension=5,use_gist=True,resolution=0.5, rotate=True,autobox_extend=4):
+    def __init__(self, txt_file, feat_to_int,int_to_feat,top_dir='.',grid_dimension=5,use_gist=True,resolution=0.5, rotate=True,autobox_extend=4,cache=None,classcnts=None,coordcache=None):
         super(PharmacophoreDataset, self).__init__()
         self.use_gist = use_gist
         self.rotate = rotate
         self.autobox_extend=autobox_extend
         self.resolution=resolution
-        data_info = pd.read_csv(txt_file, header=None)
-        self.top_dir = top_dir
-        labels = np.asarray(data_info.iloc[:, 0])
-        centers = np.asarray(data_info.iloc[:, 1:4])
-        if data_info.shape[1] > 20:        
-            grid_centers = np.asarray(data_info.iloc[:, 4:7])
-            dx_paths = np.asarray(data_info.iloc[:, 7:20])
-        else:
-            grid_centers = np.zeros_like(centers)
-            dx_paths = [[]] * data_info.shape[0]
-
-        pdb_paths = np.asarray(data_info.iloc[:, -1])
-        sdf_paths = np.asarray(data_info.iloc[:, -2])
-        N = len(labels)
-        self.classcnts = np.zeros(len(feat_to_int))
-        
-        s = molgrid.ExampleProviderSettings(data_root=top_dir)
-        coord_reader = molgrid.CoordCache(molgrid.defaultGninaReceptorTyper,s) 
-        
         self.gmaker = MyGridMaker(resolution=resolution, dimension=grid_dimension) 
         self.dims = self.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())
-        
-        for index,lnames in enumerate(labels):
-            for lname in lnames.split(':'):
-                if lname in feat_to_int:
-                    self.classcnts[feat_to_int[lname]] += 1.0
-            
-        #per example weights for weighted sampler
-        c_weight = [N/(ccnt) for ccnt in self.classcnts]
-        self.weights = np.zeros(N)
-        for index,lnames in enumerate(labels):
-            for lname in lnames.split(':'):
-                if lname in feat_to_int:
-                    self.weights[index] += c_weight[feat_to_int[lname]]
-        
-        #load gist grids in parallel
-        pool = multiprocessing.Pool()
-        gists = pool.map(PharmacophoreDataset.load_dx, zip(grid_centers, dx_paths))
-        pool.close()
+        self.cache=None
+        s = molgrid.ExampleProviderSettings(data_root=top_dir)
+        coord_reader = molgrid.CoordCache(molgrid.defaultGninaReceptorTyper,s) 
+        #preloaded dataset
+        if txt_file.endswith('.pkl'):
+            self.cache=cache
+            self.classcnts=classcnts
+            self.coordcache=coordcache
+        else:
+            data_info = pd.read_csv(txt_file, header=None)
+            self.top_dir = top_dir
+            labels = np.asarray(data_info.iloc[:, 0])
+            centers = np.asarray(data_info.iloc[:, 1:4])
+            if data_info.shape[1] > 20:        
+                grid_centers = np.asarray(data_info.iloc[:, 4:7])
+                dx_paths = np.asarray(data_info.iloc[:, 7:20])
+            else:
+                grid_centers = np.zeros_like(centers)
+                dx_paths = [[]] * data_info.shape[0]
 
-        self.cache = []
-        self.coordcache = dict()
-        for lnames, fcoord, gcoord, pdbfile,sdffile, gistcenter in zip(labels, centers, grid_centers, pdb_paths,sdf_paths, gists):
-            gist,gcenter = gistcenter
-            feat_label = np.zeros(6)
-            for lname in lnames.split(':'):
-                if lname in feat_to_int:
-                    feat_label[feat_to_int[lname]] = 1.0
-            if gist.size == 0: #don't have gist grids, use feature as center
-                gcenter = tuple(fcoord)
-            if pdbfile not in self.coordcache:
-                self.coordcache[pdbfile] = MyCoordinateSet(coord_reader.make_coords(pdbfile))
-            if sdffile not in self.coordcache:
-                self.coordcache[sdffile] = MyCoordinateSet(coord_reader.make_coords(sdffile))
-            self.cache.append({'label': feat_label,
-                                'fcoord': fcoord,
-                                'gcoord': gcoord,
-                                'gcenter': gcenter,
-                                'pdbfile': pdbfile,
-                                'sdffile': sdffile,
-                                'gist': torch.FloatTensor(gist)})
+            pdb_paths = np.asarray(data_info.iloc[:, -1])
+            sdf_paths = np.asarray(data_info.iloc[:, -2])
+            N = len(labels)
+            self.classcnts = np.zeros(len(feat_to_int))
+            
+            for index,lnames in enumerate(labels):
+                for lname in lnames.split(':'):
+                    if lname in feat_to_int:
+                        self.classcnts[feat_to_int[lname]] += 1.0
+                
+            #per example weights for weighted sampler
+            c_weight = [N/(ccnt) for ccnt in self.classcnts]
+            self.weights = np.zeros(N)
+            for index,lnames in enumerate(labels):
+                for lname in lnames.split(':'):
+                    if lname in feat_to_int:
+                        self.weights[index] += c_weight[feat_to_int[lname]]
+            
+            #load gist grids in parallel
+            pool = multiprocessing.Pool()
+            gists = pool.map(PharmacophoreDataset.load_dx, zip(grid_centers, dx_paths))
+            pool.close()
+
+            self.cache = []
+            self.coordcache = dict()
+            for lnames, fcoord, gcoord, pdbfile,sdffile, gistcenter in zip(labels, centers, grid_centers, pdb_paths,sdf_paths, gists):
+                gist,gcenter = gistcenter
+                feat_label = np.zeros(len(feat_to_int))
+                for lname in lnames.split(':'):
+                    if lname in feat_to_int:
+                        feat_label[feat_to_int[lname]] = 1.0
+                if gist.size == 0: #don't have gist grids, use feature as center
+                    gcenter = tuple(fcoord)
+                if pdbfile not in self.coordcache:
+                    self.coordcache[pdbfile] = MyCoordinateSet(coord_reader.make_coords(pdbfile))
+                if sdffile not in self.coordcache:
+                    self.coordcache[sdffile] = MyCoordinateSet(coord_reader.make_coords(sdffile))
+                self.cache.append({'label': feat_label,
+                                    'fcoord': fcoord,
+                                    'gcoord': gcoord,
+                                    'gcenter': gcenter,
+                                    'pdbfile': pdbfile,
+                                    'sdffile': sdffile,
+                                    'gist': torch.FloatTensor(gist)})
         print("data loaded")
     
         
