@@ -103,7 +103,7 @@ class GISTNet(nn.Module):
             
             self.seq = torch.nn.Sequential(*blocks)
 
-        self.fc1 = nn.Linear(lastgd*w*m4, w)
+        self.fc1 = nn.Linear(lastgd*lastgd*lastgd*w*m4, w)
         self.fc2 = nn.Linear(w, 6)
         
         self.dropout = nn.Dropout(args.dropout)
