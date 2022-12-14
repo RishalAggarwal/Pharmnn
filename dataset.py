@@ -15,12 +15,15 @@ import torch.optim as optim
 import argparse
 import multiprocessing, time
 import molgrid
+import pickle
 from gridData import Grid
+from random import sample
 try:
     from molgrid.openbabel import pybel
 except ImportError:
     from openbabel import pybel
 
+import random
 #add pickle support to CoordinateSet
 class MyCoordinateSet:
     
@@ -49,6 +52,7 @@ class MyGridMaker:
 class PharmacophoreDataset(Dataset):
     def __init__(self, txt_file, feat_to_int,int_to_feat,top_dir='.',grid_dimension=5,use_gist=True,resolution=0.5, rotate=True,autobox_extend=4,cache=None,classcnts=None,coordcache=None):
         super(PharmacophoreDataset, self).__init__()
+        self.int_to_feat=int_to_feat
         self.use_gist = use_gist
         self.rotate = rotate
         self.autobox_extend=autobox_extend
@@ -150,6 +154,7 @@ class PharmacophoreDataset(Dataset):
         #create pdb grid on the fly
         pdb_grid = torch.zeros(self.dims,dtype=torch.float32,device="cuda")
         coords = self.coordcache[example['pdbfile']].c.clone()
+        mask=torch.ones(len(self.int_to_feat))
         coords.togpu(True)
         self.grid_protein(pdb_grid,coords,example['gcenter'])
         if self.use_gist:
@@ -158,7 +163,8 @@ class PharmacophoreDataset(Dataset):
                     }
         else:
             return {'label': torch.tensor(example['label']),
-                    'grid': pdb_grid
+                    'grid': pdb_grid,
+                    'mask': mask
                     }
 
     def __len__(self):
@@ -215,7 +221,64 @@ class PharmacophoreDataset(Dataset):
         return seen_before
 
 
-
-
+class NegativesDataset(Dataset):
+    def __init__(self,negatives_text_file,pharm_dataset,dataset_size=1e7):
+        self.pharm_dataset=pharm_dataset
+        self.classcnts=self.pharm_dataset.classcnts
+        self.txt_file=negatives_text_file
+        if self.txt_file.endswith('.pkl'):
+            self.cache = pickle.load(open(self.txt_file,'rb'))
+        else:
+            # Subsample large dataset file
+            # By Massoud Seifi - http://metadatascience.com/2014/02/27/random-sampling-from-very-large-files/
+            self.cache={}
+            with open(self.txt_file, 'r') as f:
+                f.seek(0, 2)
+                filesize = f.tell()
+                random_set = np.sort(np.random.randint(1, filesize, size=int(dataset_size)))
+                for i in random_set:
+                    f.seek(i)
+                    # Skip current line (because we might be in the middle of a line) 
+                    f.readline()
+                    # Append the next line to the sample set 
+                    new_line=f.readline().rstrip()
+                    tokens=new_line.split(',')
+                    try:
+                        if tokens[0].split('Not')[1] in self.cache.keys():
+                            self.cache[tokens[0].split('Not')[1]].append({
+                            'pdbfile': tokens[-1],
+                            'sdffile': tokens[-2],
+                            'center':tuple(map(float,tokens[1:4]))})
+                        else:
+                            self.cache[tokens[0].split('Not')[1]]=[{
+                            'pdbfile': tokens[-1],
+                            'sdffile': tokens[-2],
+                            'center':tuple(map(float,tokens[1:4]))}]  
+                    except:
+                        continue
+    
+    def __len__(self):
+        return self.pharm_dataset.__len__()
+    
+    def __getitem__(self, index):
+        pharm_data_item=self.pharm_dataset.__getitem__(index)
+        labels=np.argwhere(pharm_data_item['label'].numpy()==1)
+        pharm_data_item['label']=pharm_data_item['label'].unsqueeze(0)
+        pharm_data_item['grid']=pharm_data_item['grid'].unsqueeze(0)
+        pharm_data_item['mask']=pharm_data_item['mask'].unsqueeze(0)
+        label=sample(list(labels),1)[0]
+        label_arr=torch.zeros(len(self.pharm_dataset.int_to_feat))
+        mask=torch.zeros((len(self.pharm_dataset.int_to_feat)))
+        mask[label]=1.0
+        label_feat=self.pharm_dataset.int_to_feat[label[0]]
+        negative_point=sample(self.cache[label_feat],1)[0]
+        pdb_grid = torch.zeros(self.pharm_dataset.dims,dtype=torch.float32,device="cuda")
+        coords = self.pharm_dataset.coordcache[negative_point['pdbfile']].c.clone()
+        coords.togpu(True)
+        self.pharm_dataset.grid_protein(pdb_grid,coords,negative_point['center'])
+        pharm_data_item['label']=torch.concat([pharm_data_item['label'],label_arr.unsqueeze(0)],axis=0)   
+        pharm_data_item['grid']=torch.concat([pharm_data_item['grid'],pdb_grid.unsqueeze(0)],axis=0)
+        pharm_data_item['mask']=torch.concat([pharm_data_item['mask'],mask.unsqueeze(0)],axis=0)
+        return pharm_data_item 
     
 

@@ -85,9 +85,9 @@ def infer(args):
         print('loading data')
     
     if len(train_data)>0:
-        train_dataset = get_dataset(train_data,args,feat_to_int,int_to_feat,dump=False)  
+        train_dataset = get_dataset(train_data,None,args,feat_to_int,int_to_feat,dump=False)  
     if len(test_data)>0:
-        test_dataset = get_dataset(test_data,args,feat_to_int,int_to_feat,dump=False)    
+        test_dataset = get_dataset(test_data,None,args,feat_to_int,int_to_feat,dump=False)    
 
     net= torch.load(args.model)
     net.eval()
@@ -236,7 +236,7 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
             for i in range(len(int_to_feat)):
                 if predict[i]==1:
                     point_predictions.append(int_to_feat[i])
-                if float_predict[i]>args.dataset_threshold:
+                if float_predict[i]>args.dataset_threshold and args.create_dataset:
                     protein_coords=dataset.coordcache[protein].c.clone()
                     protein_coords=protein_coords.coords.tonumpy()
                     check_pred(point_predictions[-1],center,matching_category,matching_distance,protein_feats_df,dataset_file,ligand,protein,protein_coords)

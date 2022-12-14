@@ -25,7 +25,7 @@ import se3cnn
 from se3cnn.image.convolution import SE3Convolution
 from se3cnn.image.gated_block import GatedBlock
 from model import GISTNet, weights_init
-from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset
+from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset,NegativesDataset
 from sklearn.metrics import confusion_matrix
 import itertools
 
@@ -42,6 +42,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser('Train a CNN on GIST data to predict pharmacophore feature.')
     parser.add_argument('--wandb_name',required=False,help='data to train with',default=None)
     parser.add_argument('--train_data',required=True,help='data to train with',default="data_train_pdb.txt")
+    parser.add_argument('--negative_data',required=False,help='active learning negatives data',default=None)
     parser.add_argument('--test_data',default="",help='data to test with')
     parser.add_argument('--pickle_only',help="Create pickle files of the data only; don't train",action='store_true')
     parser.add_argument('--top_dir',default='.',help='root directory of data')
@@ -145,7 +146,7 @@ def log_metrics(prefix, labels, predicts,epoch,category,feat_to_int,int_to_feat,
 
     return metrics
     
-def get_dataset(fname, args,feat_to_int,int_to_feat,dump=True):
+def get_dataset(fname,negative_fname, args,feat_to_int,int_to_feat,dump=True):
     '''Create a dataset.  If a pkl file is not passed, create one for faster loading later'''
     if fname.endswith('.pkl'):
         dataset = pickle.load(open(fname,'rb'))
@@ -168,13 +169,18 @@ def get_dataset(fname, args,feat_to_int,int_to_feat,dump=True):
         #dataset.use_gist = args.use_gist
         #dataset.gmaker = MyGridMaker(resolution=0.5, dimension=args.grid_dimension) 
         #dataset.dims = dataset.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())        
-        return dataset
     else:
         dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist)
         if dump:
             prefix,ext = os.path.splitext(fname)
             pickle.dump([dataset.cache,dataset.coordcache,dataset.classcnts], open(prefix+'.pkl','wb'))
-        return dataset
+    if negative_fname:
+        dataset=NegativesDataset(negative_fname,dataset)
+        '''if not negative_fname.endswith('.pkl'):
+            if dump:
+                prefix,ext = os.path.splitext(negative_fname)
+                pickle.dump(dataset.cache, open(prefix+'.pkl','wb'))'''
+    return dataset
 
 def train(args):
     
@@ -197,6 +203,7 @@ def train(args):
 
     train_data = args.train_data
     test_data = args.test_data
+    negative_data=args.negative_data
     if not test_data: # infer test file name from train file name - makes wandb sweep easier
         test_data = train_data.replace('train','test')
 
@@ -209,10 +216,10 @@ def train(args):
     #Creation of test set/loader (individual system)
 
 
-    dataset1 = get_dataset(train_data,args,feat_to_int,int_to_feat)
+    dataset1 = get_dataset(train_data,negative_data,args,feat_to_int,int_to_feat)
     trainloader = DataLoader(dataset1, batch_size=args.batch_size, num_workers=0, shuffle=True,drop_last=False)
 
-    dataset2 = get_dataset(test_data,args,feat_to_int,int_to_feat)
+    dataset2 = get_dataset(test_data,None,args,feat_to_int,int_to_feat)
     testloader = DataLoader(dataset2, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=False)
 
 
@@ -239,7 +246,7 @@ def train(args):
 
     #calculate weights of classes
     pos_weight = [(len(dataset1)-ccnt)/ccnt for ccnt in dataset1.classcnts] 
-    criterion = nn.BCEWithLogitsLoss(reduction='mean',pos_weight=torch.tensor(pos_weight).to('cuda'))
+    criterion = nn.BCEWithLogitsLoss(reduction='none',pos_weight=torch.tensor(pos_weight).to('cuda'))
 
     if args.solver == "sgd":
         optimizer = optim.SGD(net.parameters(), lr=args.lr,momentum=0.9, weight_decay=args.weight_decay)
@@ -259,21 +266,29 @@ def train(args):
     if args.eval_only:
         num_epochs=1
     for epoch in range(num_epochs):
-        if args.eval_only:
-            net.eval()
-        net.train()
         running_loss = 0.0
-        testloss = 0.
+        testloss = 0.0
         labels = []
         predicted = []
         
         start = time.time()
         net.train()
+        if args.eval_only:
+            net.eval()
         for i, data in enumerate(trainloader):
             optimizer.zero_grad()
             inputs = data['grid']
+            masks=data['mask']
+            labels_tensor=data['label']
+            #negative dataset has an extra dimension
+            if args.negative_data:
+                inputs=inputs.view(-1,inputs.size(2),inputs.size(3),inputs.size(4),inputs.size(5))
+                labels_tensor=labels_tensor.view(-1,labels_tensor.size(2))
+                masks=masks.view(-1,masks.size(2))
             outputs = net(inputs.to('cuda'))
-            loss = criterion(outputs, data['label'].to('cuda'))
+            loss = criterion(outputs, labels_tensor.to('cuda'))
+            loss = loss * masks.to('cuda')
+            loss = loss.mean()
             if not args.eval_only:
                 loss.backward()
                 
@@ -287,7 +302,7 @@ def train(args):
             
             sg_outputs = torch.sigmoid(outputs.detach().cpu()) # push through a sigmoid layer just for accuracy calculations
             predicted += sg_outputs.tolist()
-            labels += data['label'].cpu().tolist()
+            labels += labels_tensor.cpu().tolist()
 
         wandb.log({'Epoch':epoch})
         train_metrics = log_metrics('Train',labels,predicted,epoch,category,feat_to_int,int_to_feat,args.verbose)
