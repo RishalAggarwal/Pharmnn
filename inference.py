@@ -24,6 +24,7 @@ from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset
 from train_pharmnn import get_dataset
 from scipy.spatial import distance_matrix
 from skimage.measure import label
+from sklearn.cluster import AgglomerativeClustering
 import molgrid
 try:
     from molgrid.openbabel import pybel
@@ -59,6 +60,7 @@ def parse_arguments():
     parser.add_argument('--spherical',help="spherical masking of generated densities",action='store_true')
     parser.add_argument('--xyz',help="output xyz files of pharmacophoress",action='store_true')
     parser.add_argument('--prob_threshold',default=0.9,type=float,help='probability threshold for masking')
+    parser.add_argument('--clus_threshold',default=1.5,type=float,help='distance threshold for clustering pharmacophore points')
     args = parser.parse_args()
     return args
 
@@ -204,7 +206,7 @@ def get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,mat
     num_z=nums[2]
 
     feat_to_coords={}
-    centers_grid=np.reshape(centers,(num_x,num_y,num_z,3))
+    #centers_grid=np.reshape(centers,(num_x,num_y,num_z,3))
     for category in feat_to_sphere_ind.keys():
         feat_to_coords[category]=[]
         distances=feat_to_distances[category]
@@ -225,8 +227,23 @@ def get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,mat
                 point_ind=np.argmax(comp_grid)
                 #coord=centers_grid[point_ind]
                 coord=centers[point_ind]
-                feat_to_coords[category].append(tuple(coord))
-        feat_to_coords[category]=set(feat_to_coords[category])    
+                feat_to_coords[category].append(coord)    
+    return feat_to_coords
+
+def cluster_xyz(feat_to_coords,distance_threshold=1.5):
+
+    clustering = AgglomerativeClustering(n_clusters=None,compute_full_tree=True,linkage='average',distance_threshold=distance_threshold)
+    for category in feat_to_coords.keys():
+        if len(feat_to_coords[category])<2:
+            continue
+        final_xyz=[]
+        coord_array=np.array(feat_to_coords[category])
+        clustering.fit(coord_array)
+        clusters=clustering.labels_
+        for n in np.unique(clusters):
+            cluster_center=coord_array[clusters==n].mean(axis=0)
+            final_xyz.append(cluster_center)
+        feat_to_coords[category]=final_xyz
     return feat_to_coords
 
 def write_xyz(feat_to_coords,xyz_prefix,protein,top_dir):
@@ -235,7 +252,10 @@ def write_xyz(feat_to_coords,xyz_prefix,protein,top_dir):
         xyz_file_name='/'.join(protein.split('/')[:-1])+'/'+xyz_prefix+"_"+category+'.xyz'
         xyz_file_name=os.path.join(top_dir,xyz_file_name)
         xyz_file = open(xyz_file_name,'w')
+        coord_set=set()
         for coords in feat_to_coords[category]:
+            coord_set.add(tuple(coords))
+        for coords in coord_set:
             xyz_file.write('H '+str(coords[0])+' '+str(coords[1])+' '+str(coords[2])+'\n')
         xyz_file.close()
     
@@ -338,6 +358,7 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
             #xyz output
             if args.xyz:
                 feat_to_coords=get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_category,matching_distance,args.prob_threshold)
+                feat_to_coords=cluster_xyz(feat_to_coords,args.clus_threshold)
                 write_xyz(feat_to_coords,args.prefix_xyz,protein,args.top_dir)
         #output dx files of predictions
         if args.create_dx:     
