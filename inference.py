@@ -49,18 +49,19 @@ def parse_arguments():
     parser.add_argument('--seed',default=42,type=int,help='random seed')
     parser.add_argument('--autobox_extend',default=4,type=int,help='amount to expand autobox by')
     parser.add_argument('--create_dx',help="Create dx files of the predictions",action='store_true')
+    parser.add_argument('--prefix_dx',type=str,default="",help='prefix for dx files')
     parser.add_argument('--output_pred',help="output predictions into a text file",action='store_true')
     parser.add_argument('--round_pred',help="round up predictions in dx files",action='store_true')
     parser.add_argument('--model',type=str,help='model to test with')
     parser.add_argument('--output',type=str,help='output file of the predictions')
     parser.add_argument('--negative_output',type=str,help='output file of negative predictions')
-    parser.add_argument('--prefix_dx',type=str,default="",help='prefix for dx files')
-    parser.add_argument('--prefix_xyz',type=str,default="",help='prefix for xyz files')
     parser.add_argument('--verbose',help="verbse complex working on",action='store_true')
     parser.add_argument('--spherical',help="spherical masking of generated densities",action='store_true')
     parser.add_argument('--xyz',help="output xyz files of pharmacophoress",action='store_true')
+    parser.add_argument('--prefix_xyz',type=str,default="",help='prefix for xyz files')
     parser.add_argument('--prob_threshold',default=0.9,type=float,help='probability threshold for masking')
     parser.add_argument('--clus_threshold',default=1.5,type=float,help='distance threshold for clustering pharmacophore points')
+    parser.add_argument('--xyz_rank',default=0,type=int,help='output only top ranked xyz points')
     args = parser.parse_args()
     return args
 
@@ -165,13 +166,15 @@ def check_pred(point_prediction,center,matching_category,matching_distance,prote
 
 def reduce_to_spheres(predictions,centers,matching_distance,matching_category,protein_feats_df,feat_to_int):
     spheres=np.copy(predictions)
+    spheres_z=np.copy(predictions)
     feat_to_sphere_ind={}
     feat_to_distances={}
     for category in matching_distance.keys():
         sub_df=protein_feats_df.loc[protein_feats_df['Feature'] == matching_category[category]]
         prot_feat_coords=sub_df.values[:,1:]
+        index=feat_to_int[category]
         if prot_feat_coords.shape[0]==0:
-            spheres[index]=0
+            spheres[:,index]=0
             continue
         distances=distance_matrix(centers,prot_feat_coords)
         threshold=matching_distance[category]
@@ -182,7 +185,6 @@ def reduce_to_spheres(predictions,centers,matching_distance,matching_category,pr
         indices=np.argwhere(distances_min<threshold)
         feat_to_sphere_ind[category]=indices
         distances_min=np.min(distances,axis=1)
-        index=feat_to_int[category]
         spheres[:,index][distances_min > threshold] = 0.0
     return spheres, feat_to_sphere_ind, feat_to_distances
 
@@ -198,7 +200,7 @@ def get_coords_and_dimension(centers):
 
     return [x_coords,y_coords,z_coords],[num_x,num_y,num_z]
 
-def get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_category,matching_distance,prob_threshold):
+def get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_distance,prob_threshold):
     _,nums=get_coords_and_dimension(centers)
 
     num_x=nums[0]
@@ -206,9 +208,11 @@ def get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,mat
     num_z=nums[2]
 
     feat_to_coords={}
+    feat_to_score={}
     #centers_grid=np.reshape(centers,(num_x,num_y,num_z,3))
     for category in feat_to_sphere_ind.keys():
         feat_to_coords[category]=[]
+        feat_to_score[category]=[]
         distances=feat_to_distances[category]
         sphere_grid=spheres[:,feat_to_int[category]]
         sphere_grid=np.reshape(sphere_grid,(num_x,num_y,num_z))
@@ -227,26 +231,49 @@ def get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,mat
                 point_ind=np.argmax(comp_grid)
                 #coord=centers_grid[point_ind]
                 coord=centers[point_ind]
-                feat_to_coords[category].append(coord)    
-    return feat_to_coords
+                feat_to_coords[category].append(coord)
+                feat_to_score[category].append(comp_grid.max())   
+    return feat_to_coords, feat_to_score
 
-def cluster_xyz(feat_to_coords,distance_threshold=1.5):
+def cluster_xyz(feat_to_coords,feat_to_score,distance_threshold=1.5):
 
     clustering = AgglomerativeClustering(n_clusters=None,compute_full_tree=True,linkage='average',distance_threshold=distance_threshold)
     for category in feat_to_coords.keys():
         if len(feat_to_coords[category])<2:
             continue
         final_xyz=[]
+        final_score=[]
         coord_array=np.array(feat_to_coords[category])
+        score_array=np.array(feat_to_score[category])
         clustering.fit(coord_array)
         clusters=clustering.labels_
         for n in np.unique(clusters):
             cluster_center=coord_array[clusters==n].mean(axis=0)
+            score_center=score_array[clusters==n].max()            
             final_xyz.append(cluster_center)
+            final_score.append(score_center)
         feat_to_coords[category]=final_xyz
-    return feat_to_coords
+        feat_to_score[category]=final_score
+    return feat_to_coords, feat_to_score
 
-def write_xyz(feat_to_coords,xyz_prefix,protein,top_dir):
+def write_xyz(feat_to_coords,feat_to_score,rank,xyz_prefix,protein,top_dir):
+
+    # take top 'rank' predicted points
+    if rank!=0:
+        score_list=[]
+        index_list=[]
+        category_list=[]
+        feat_to_coords_ranked={}
+        for category in feat_to_score.keys():
+            score_list+=feat_to_score[category]
+            index_list+=range(len(feat_to_score[category]))
+            category_list+=[category]*len(feat_to_score[category])
+            feat_to_coords_ranked[category]=[]
+        score_list=np.array(score_list)
+        score_rank=np.argsort(score_list)
+        for i in score_rank[-rank:]:
+            feat_to_coords_ranked[category_list[i]].append(feat_to_coords[category_list[i]][index_list[i]])
+        feat_to_coords=feat_to_coords_ranked 
 
     for category in feat_to_coords.keys():
         xyz_file_name='/'.join(protein.split('/')[:-1])+'/'+xyz_prefix+"_"+category+'.xyz'
@@ -357,9 +384,9 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
         
             #xyz output
             if args.xyz:
-                feat_to_coords=get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_category,matching_distance,args.prob_threshold)
-                feat_to_coords=cluster_xyz(feat_to_coords,args.clus_threshold)
-                write_xyz(feat_to_coords,args.prefix_xyz,protein,args.top_dir)
+                feat_to_coords,feat_to_score=get_xyz(spheres,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_distance,args.prob_threshold)
+                feat_to_coords,feat_to_score=cluster_xyz(feat_to_coords,feat_to_score,args.clus_threshold)
+                write_xyz(feat_to_coords,feat_to_score,args.xyz_rank,args.prefix_xyz,protein,args.top_dir)
         #output dx files of predictions
         if args.create_dx:     
             if args.round_pred:
