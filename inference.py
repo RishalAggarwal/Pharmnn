@@ -62,6 +62,7 @@ def parse_arguments():
     parser.add_argument('--prob_threshold',default=0.9,type=float,help='probability threshold for masking')
     parser.add_argument('--clus_threshold',default=1.5,type=float,help='distance threshold for clustering pharmacophore points')
     parser.add_argument('--xyz_rank',default=0,type=int,help='output only top ranked xyz points')
+    parser.add_argument('--category_wise',help="output top ranked for each pharmacophore category",action='store_true')
     args = parser.parse_args()
     return args
 
@@ -270,7 +271,7 @@ def cluster_xyz(feat_to_coords,feat_to_score,feat_to_zscore,distance_threshold=1
         feat_to_zscore[category]=final_zscore
     return feat_to_coords, feat_to_score, feat_to_zscore
 
-def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,xyz_prefix,protein,top_dir):
+def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,category_wise,xyz_prefix,protein,top_dir):
 
     # take top 'rank' predicted points
     if rank!=0:
@@ -290,6 +291,20 @@ def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,xyz_prefix,protei
         for i in zscore_rank[-rank:]:
             feat_to_coords_ranked[category_list[i]].append(feat_to_coords[category_list[i]][index_list[i]])
         feat_to_coords=feat_to_coords_ranked 
+    
+    if category_wise:
+        feat_to_coords_ranked={}
+        for category in feat_to_score.keys():
+            feat_to_coords_ranked[category]=[]
+            score_list=np.array(feat_to_score[category])
+            score_rank=np.argsort(score_list)
+            if 'Hydrogen' in category:
+                top_ranks=3
+            else:
+                top_ranks=2
+            for i in score_rank[-top_ranks:]:
+                feat_to_coords_ranked[category].append(feat_to_coords[category][i])
+        feat_to_coords=feat_to_coords_ranked
 
     for category in feat_to_coords.keys():
         xyz_file_name='/'.join(protein.split('/')[:-1])+'/'+xyz_prefix+"_"+category+'.xyz'
@@ -402,7 +417,7 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
             if args.xyz:
                 feat_to_coords,feat_to_score,feat_to_zscore=get_xyz(spheres,spheres_z,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_distance,args.prob_threshold)
                 feat_to_coords,feat_to_score,feat_to_zscore=cluster_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.clus_threshold)
-                write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.xyz_rank,args.prefix_xyz,protein,args.top_dir)
+                write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.xyz_rank,args.category_wise,args.prefix_xyz,protein,args.top_dir)
         #output dx files of predictions
         if args.create_dx:     
             if args.round_pred:
