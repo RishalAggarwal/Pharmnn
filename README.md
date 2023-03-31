@@ -1,5 +1,8 @@
 # Pharmacophore prediction
 
+
+Poster link [Here](https://docs.google.com/presentation/d/1e2YUuBjlNvUYUxc3sU_PFYxOa2TtfzDqW_K8cdiRkMA/edit?usp=sharing)
+
 Train_pharmnn.py - Model training and pickling data
 
 Dataset.py - Pytorch Dataset classes for original and retraining with sampled negatives
@@ -26,4 +29,4 @@ example usage:
 
 Rest of the arguments define the model hyperparameters
 
-Poster link [Here](https://docs.google.com/presentation/d/1e2YUuBjlNvUYUxc3sU_PFYxOa2TtfzDqW_K8cdiRkMA/edit?usp=sharing)
+
