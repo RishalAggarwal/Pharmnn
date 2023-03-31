@@ -25,3 +25,5 @@ example usage:
 ```python train_pharmnn.py --train_data data/chemsplit_train0_with_ligand.pkl --test_data data/chemsplit_test0_with_ligand.pkl  --wandb_name iter1_chemsplit0 --negative_data data/iter1_chemsplit_0_negatives_train.txt --batch_size 128```
 
 Rest of the arguments define the model hyperparameters
+
+Poster link [Here](https://docs.google.com/presentation/d/1e2YUuBjlNvUYUxc3sU_PFYxOa2TtfzDqW_K8cdiRkMA/edit?usp=sharing)
