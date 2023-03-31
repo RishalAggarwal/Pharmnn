@@ -1,7 +1,7 @@
 # Pharmacophore prediction
 
 
-Poster link [Here](https://docs.google.com/presentation/d/1e2YUuBjlNvUYUxc3sU_PFYxOa2TtfzDqW_K8cdiRkMA/edit?usp=sharing)
+Poster link [Here](https://drive.google.com/file/d/1z8nWC76eV0D-_sv-459jn2KOaYRqm6x-/view?usp=sharing)
 
 Train_pharmnn.py - Model training and pickling data
 
