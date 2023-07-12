@@ -1,5 +1,8 @@
 # Pharmacophore prediction
 
+
+Poster link [Here](https://drive.google.com/file/d/1z8nWC76eV0D-_sv-459jn2KOaYRqm6x-/view?usp=sharing)
+
 Train_pharmnn.py - Model training and pickling data
 
 Dataset.py - Pytorch Dataset classes for original and retraining with sampled negatives
@@ -25,3 +28,5 @@ example usage:
 ```python train_pharmnn.py --train_data data/chemsplit_train0_with_ligand.pkl --test_data data/chemsplit_test0_with_ligand.pkl  --wandb_name iter1_chemsplit0 --negative_data data/iter1_chemsplit_0_negatives_train.txt --batch_size 128```
 
 Rest of the arguments define the model hyperparameters
+
+
