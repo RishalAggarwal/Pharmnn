@@ -378,14 +378,14 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
             b+=1
             centers.append(center)
             if b==args.batch_size:
-                outputs = net(input_tensor)
+                outputs,hidden_layer = net(input_tensor)
                 sg_outputs = torch.sigmoid(outputs.detach().cpu())
                 predicted += sg_outputs.tolist()
                 #reset batch iteration
                 b=0
         #if smaller than batch_size
         if b!=0:
-            outputs = net(input_tensor[:b])
+            outputs,hidden_layer = net(input_tensor[:b])
             sg_outputs = torch.sigmoid(outputs.detach().cpu())
             predicted += sg_outputs.tolist()
         intpredicted=np.round(predicted).astype(int)

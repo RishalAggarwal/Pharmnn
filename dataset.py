@@ -164,7 +164,10 @@ class PharmacophoreDataset(Dataset):
         else:
             return {'label': torch.tensor(example['label']),
                     'grid': pdb_grid,
-                    'mask': mask
+                    'mask': mask,
+                    'center': example['gcenter'],
+                    'pdbfile': example['pdbfile'],
+                    'sdffile': example['sdffile']
                     }
 
     def __len__(self):

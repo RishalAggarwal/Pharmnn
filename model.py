@@ -105,7 +105,6 @@ class GISTNet(nn.Module):
 
         self.fc1 = nn.Linear(lastgd*lastgd*lastgd*w*m4, w)
         self.fc2 = nn.Linear(w, 6)
-        
         self.dropout = nn.Dropout(args.dropout)
         
     def forward(self, x):
@@ -115,9 +114,9 @@ class GISTNet(nn.Module):
         x = self.seq(x)
         #print(x.shape)
         x = x.view(batch_size, -1)
-        x = self.sigma(self.fc1(x))
+        x1 = self.sigma(self.fc1(x))
         #print(x.shape)
-        x = self.dropout(x)
+        x = self.dropout(x1)
         x = self.fc2(x)
         #print(x.shape)
-        return x
+        return x,x1

@@ -51,12 +51,14 @@ def parse_arguments():
     parser.add_argument('--steplr',default=50,type=int,help='when to step the learning rate')
     parser.add_argument('--patience',default=35,type=int,help='when to step the learning rate')
     parser.add_argument('--eval_only',help="only evaluate the model, no training",action='store_true')
+    parser.add_argument('--output_pred',help='output predictions to file',type=str,default='')
     parser.add_argument('--model',type=str,help='model to test with',default=None)
     parser.add_argument('--lr',default=0,type=float,help='learning rate')
     parser.add_argument('--solver',default='adam',help='solver to use (sgd|adam)')
     parser.add_argument('--clip',default=1.0,type=float,help='gradient clipping value')
     parser.add_argument('--weight_decay',default=0.0,type=float,help='weight decay')
     parser.add_argument('--dropout',default=0.0,type=float,help='dropout percentage')
+    parser.add_argument('--no_shuffle',help="don't shuffle train datapoints",action='store_false')
     parser.add_argument('--conv_res',default=32,type=int,help='convolution layer resolution')
     parser.add_argument('--kernel_size',default=3,type=int,help='convolution kernal size')
 
@@ -182,6 +184,22 @@ def get_dataset(fname,negative_fname, args,feat_to_int,int_to_feat,dump=True):
                 pickle.dump(dataset.cache, open(prefix+'.pkl','wb'))'''
     return dataset
 
+def output_pred(data,hidden_layers,predictions,int_to_feat,file):
+    pdbfiles=data['pdbfile']
+    sdffiles=data['sdffile']
+    centers=data['center']
+    ground_truth_tensor= data['label']
+    ground_truth_numpy=ground_truth_tensor.numpy()
+    hidden_layers=hidden_layers
+    index=0
+    for pdbfile,sdffile,ground_truth,hidden_layer,prediction in zip(pdbfiles,sdffiles,ground_truth_numpy,hidden_layers,predictions):
+        true_labels=[]
+        for i in int_to_feat.keys():
+            if ground_truth[i]==1:
+                true_labels.append(int_to_feat[i])
+        file.write(':'.join(true_labels)+';'+ str(centers[0][index].tolist())+';'+str(centers[1][index].tolist())+';'+str(centers[2][index].tolist())+';'+sdffile+';'+pdbfile+';'+ str(list(prediction))+';'+ str(list(hidden_layer))+'\n')        
+        index+=1
+
 def train(args):
     
     #non-se3 conv and se3 prefer different learning rates
@@ -217,7 +235,7 @@ def train(args):
 
 
     dataset1 = get_dataset(train_data,negative_data,args,feat_to_int,int_to_feat)
-    trainloader = DataLoader(dataset1, batch_size=args.batch_size, num_workers=0, shuffle=True,drop_last=False)
+    trainloader = DataLoader(dataset1, batch_size=args.batch_size, num_workers=0, shuffle=args.no_shuffle,drop_last=False)
 
     dataset2 = get_dataset(test_data,None,args,feat_to_int,int_to_feat)
     testloader = DataLoader(dataset2, batch_size=args.batch_size, shuffle=False, num_workers=0, drop_last=False)
@@ -275,6 +293,9 @@ def train(args):
         net.train()
         if args.eval_only:
             net.eval()
+            if len(args.output_pred)>0:
+                train_output_file=open(args.output_pred+'_train.txt','w')
+                test_output_file=open(args.output_pred+'_test.txt','w')
         for i, data in enumerate(trainloader):
             optimizer.zero_grad()
             inputs = data['grid']
@@ -285,10 +306,13 @@ def train(args):
                 inputs=inputs.view(-1,inputs.size(2),inputs.size(3),inputs.size(4),inputs.size(5))
                 labels_tensor=labels_tensor.view(-1,labels_tensor.size(2))
                 masks=masks.view(-1,masks.size(2))
-            outputs = net(inputs.to('cuda'))
+            outputs,hidden_layers = net(inputs.to('cuda'))
             loss = criterion(outputs, labels_tensor.to('cuda'))
             loss = loss * masks.to('cuda')
             loss = loss.mean()
+            sg_outputs = torch.sigmoid(outputs.detach().cpu()) # push through a sigmoid layer just for accuracy calculations
+            predicted += sg_outputs.tolist()
+            labels += labels_tensor.cpu().tolist()
             if not args.eval_only:
                 loss.backward()
                 
@@ -298,11 +322,10 @@ def train(args):
                 if clip_value > 0:
                     torch.nn.utils.clip_grad_norm_(net.parameters(), clip_value)
                 optimizer.step()
-
-            
-            sg_outputs = torch.sigmoid(outputs.detach().cpu()) # push through a sigmoid layer just for accuracy calculations
-            predicted += sg_outputs.tolist()
-            labels += labels_tensor.cpu().tolist()
+            else:
+                if len(args.output_pred)>0:
+                    hidden_layers=hidden_layers.detach().cpu().numpy()
+                    output_pred(data,hidden_layers,sg_outputs.tolist(),int_to_feat,train_output_file)         
 
         wandb.log({'Epoch':epoch})
         train_metrics = log_metrics('Train',labels,predicted,epoch,category,feat_to_int,int_to_feat,args.verbose)
@@ -315,11 +338,14 @@ def train(args):
             net.eval()
             for(i, data) in enumerate(testloader):
                 inputs = data['grid']
-                outputs = net(inputs.to('cuda'))
+                outputs,hidden_layers = net(inputs.to('cuda'))
                 testloss = criterion(outputs, data['label'].to('cuda'))                                    
                 sg_outputs = torch.sigmoid(outputs.detach().cpu())
                 test_predict += sg_outputs.tolist()
                 test_labels += data['label'].cpu().tolist()
+                if len(args.output_pred)>0:
+                    hidden_layers=hidden_layers.detach().cpu().numpy()
+                    output_pred(data,hidden_layers,sg_outputs.tolist(),int_to_feat,test_output_file)
         if args.verbose:
             print('Learning rate is ', scheduler.get_lr())
         
