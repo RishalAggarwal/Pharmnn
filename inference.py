@@ -63,6 +63,8 @@ def parse_arguments():
     parser.add_argument('--clus_threshold',default=1.5,type=float,help='distance threshold for clustering pharmacophore points')
     parser.add_argument('--xyz_rank',default=0,type=int,help='output only top ranked xyz points')
     parser.add_argument('--category_wise',help="output top ranked for each pharmacophore category",action='store_true')
+    parser.add_argument('--density_score',help="output top ranked for each pharmacophore category by density",action='store_true')
+    parser.add_argument('--density_distance_threshold',default=2.0,type=float,help='distance threshold for density score')
     args = parser.parse_args()
     return args
 
@@ -299,9 +301,10 @@ def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,category_wise,xyz
             score_list=np.array(feat_to_score[category])
             score_rank=np.argsort(score_list)
             if 'Hydrogen' in category:
-                top_ranks=3
+                top_ranks=5
             else:
-                top_ranks=2
+                top_ranks=5
+            top_ranks=min(top_ranks,len(score_rank))
             for i in score_rank[-top_ranks:]:
                 feat_to_coords_ranked[category].append(feat_to_coords[category][i])
         feat_to_coords=feat_to_coords_ranked
@@ -317,6 +320,17 @@ def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,category_wise,xyz
             xyz_file.write('H '+str(coords[0])+' '+str(coords[1])+' '+str(coords[2])+'\n')
         xyz_file.close()
     
+def density_score(predictions,centers,feat_to_coords,feat_to_int,density_distance_threshold=2):
+    feat_to_density_scores={}
+    for category in feat_to_coords.keys():
+        for coord in feat_to_coords[category]:
+            distances=distance_matrix(centers,np.expand_dims(coord,axis=0))
+            score=np.sum(predictions[distances[:,0]<density_distance_threshold,feat_to_int[category]])
+            if category in feat_to_density_scores.keys():
+                feat_to_density_scores[category].append(score)
+            else:
+                feat_to_density_scores[category]=[score]
+    return feat_to_density_scores
 
 
 
@@ -353,6 +367,7 @@ def write_dx(centers,predicted,resolution,dx_file):
         else:
             dx_file.write(" ")
 
+@torch.no_grad()
 def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_category,matching_distance,dataset_file=None):
 
     complexes=dataset.get_complexes()
@@ -415,8 +430,12 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
         
             #xyz output
             if args.xyz:
-                feat_to_coords,feat_to_score,feat_to_zscore=get_xyz(spheres,spheres_z,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_distance,args.prob_threshold)
+                feat_to_coords,feat_to_score,feat_to_zscore=get_xyz(spheres,spheres_z,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_distance,prob_threshold=args.prob_threshold)
                 feat_to_coords,feat_to_score,feat_to_zscore=cluster_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.clus_threshold)
+                if args.density_score:
+                    feat_to_density_scores=density_score(predictions,centers,feat_to_coords,feat_to_int,density_distance_threshold=args.density_distance_threshold)
+                    for category in feat_to_coords.keys():
+                        feat_to_score[category]=feat_to_density_scores[category]
                 write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.xyz_rank,args.category_wise,args.prefix_xyz,protein,args.top_dir)
         #output dx files of predictions
         if args.create_dx:     

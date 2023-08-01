@@ -12,6 +12,7 @@ import os
 
 def get_mol_pharm(rdmol,obmol):
     # define smarts strings
+    #use both openbabel and rdkit to get the smarts matches
     smarts={}
     smarts['Aromatic']=["a1aaaaa1", "a1aaaa1"]
     smarts['PositiveIon'] = ['[+,+2,+3,+4]',"[$(C(N)(N)=N)]", "[$(n1cc[nH]c1)]"]
@@ -29,8 +30,8 @@ def get_mol_pharm(rdmol,obmol):
         for smart in smarts[key]:
             obsmarts = pybel.Smarts(smart) # Matches an ethyl group
             matches = obsmarts.findall(obmol)
-            #smarts_mol=MolFromSmarts(smart)
-            #matches=mol.GetSubstructMatches(smarts_mol,uniquify=True)
+            smarts_mol=MolFromSmarts(smart)
+            rd_matches=rdmol.GetSubstructMatches(smarts_mol,uniquify=True)
             for match in matches:
                 positions=[]
                 for idx in match:
@@ -40,14 +41,23 @@ def get_mol_pharm(rdmol,obmol):
                     pharmit_feats[key].append(positions)
                 else:
                     pharmit_feats[key]=[positions]
+            for match in rd_matches:
+                positions=[]
+                for idx in match:
+                    positions.append(np.array(atoms[idx].coords))
+                positions=np.array(positions).mean(axis=0)
+                if key in pharmit_feats.keys():
+                    pharmit_feats[key].append(positions)
+                else:
+                    pharmit_feats[key]=[positions]
 
     return pharmit_feats
 
 def pharm_rec(file):
-    rdmol=rdmolfiles.MolFromPDBFile(file,sanitize=False) 
+    rdmol=rdmolfiles.MolFromPDBFile(file,sanitize=True) 
     obmol =next(pybel.readfile("pdb", file))
     pharmit_feat=get_mol_pharm(rdmol,obmol)
-    f=open(file.split('_protein_nowat.pdb')[0]+'_protein_pharmfeats_obabel.csv','w')
+    f=open(file.split('_nowat.pdb')[0]+'_pharmfeats_obabel.csv','w')
     f.write('Feature,x,y,z\n')
     for key in pharmit_feat.keys():
         for position in pharmit_feat[key]:
@@ -58,7 +68,7 @@ def pharm_rec(file):
 if __name__ == '__main__':
     data_dir=sys.argv[1]
     os.chdir(data_dir)
-    pdbs=glob('./*/*_protein_nowat.pdb')
+    pdbs=glob('./*_nowat.pdb')
     for pdb in pdbs:
         print(pdb)
         pharm_rec(pdb)

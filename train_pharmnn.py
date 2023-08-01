@@ -61,7 +61,7 @@ def parse_arguments():
     parser.add_argument('--no_shuffle',help="don't shuffle train datapoints",action='store_false')
     parser.add_argument('--conv_res',default=32,type=int,help='convolution layer resolution')
     parser.add_argument('--kernel_size',default=3,type=int,help='convolution kernal size')
-
+    parser.add_argument('--autobox_extend',default=4,type=int,help='amount to expand autobox by')
     parser.add_argument('--block_depth',default=2,type=int,help='depth of each convolution block')
     parser.add_argument('--activation',default='relu',type=str,help='pytorch name of activation function')
     parser.add_argument('--expand_width',default=0,type=int,help='increase width of convolutions in each block')
@@ -165,14 +165,14 @@ def get_dataset(fname,negative_fname, args,feat_to_int,int_to_feat,dump=True):
             cache=dataset.cache
             classcnts=dataset.classcnts
             coordcache=dataset.coordcache
-        dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist,cache=cache,classcnts=classcnts,coordcache=coordcache)
+        dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist,cache=cache,classcnts=classcnts,coordcache=coordcache,autobox_extend=args.autobox_extend)
         #dataset.rotate = args.rotate
         #TODO: factor out parameters that shouldn't be pickled, basically just pickle the cache (create a new class)
         #dataset.use_gist = args.use_gist
         #dataset.gmaker = MyGridMaker(resolution=0.5, dimension=args.grid_dimension) 
         #dataset.dims = dataset.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())        
     else:
-        dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist)
+        dataset = PharmacophoreDataset(txt_file=fname,feat_to_int=feat_to_int,int_to_feat=int_to_feat,top_dir=args.top_dir, grid_dimension=args.grid_dimension, rotate=args.rotate, use_gist=args.use_gist,autobox_extend=args.autobox_extend)
         if dump:
             prefix,ext = os.path.splitext(fname)
             pickle.dump([dataset.cache,dataset.coordcache,dataset.classcnts], open(prefix+'.pkl','wb'))
