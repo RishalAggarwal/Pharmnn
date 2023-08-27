@@ -30,8 +30,6 @@ def get_mol_pharm(rdmol,obmol):
         for smart in smarts[key]:
             obsmarts = pybel.Smarts(smart) # Matches an ethyl group
             matches = obsmarts.findall(obmol)
-            smarts_mol=MolFromSmarts(smart)
-            rd_matches=rdmol.GetSubstructMatches(smarts_mol,uniquify=True)
             for match in matches:
                 positions=[]
                 for idx in match:
@@ -41,20 +39,27 @@ def get_mol_pharm(rdmol,obmol):
                     pharmit_feats[key].append(positions)
                 else:
                     pharmit_feats[key]=[positions]
-            for match in rd_matches:
-                positions=[]
-                for idx in match:
-                    positions.append(np.array(atoms[idx].coords))
-                positions=np.array(positions).mean(axis=0)
-                if key in pharmit_feats.keys():
-                    pharmit_feats[key].append(positions)
-                else:
-                    pharmit_feats[key]=[positions]
-
+            try: 
+                smarts_mol=MolFromSmarts(smart)
+                rd_matches=rdmol.GetSubstructMatches(smarts_mol,uniquify=True)
+                for match in rd_matches:
+                    positions=[]
+                    for idx in match:
+                        positions.append(np.array(atoms[idx].coords))
+                    positions=np.array(positions).mean(axis=0)
+                    if key in pharmit_feats.keys():
+                        pharmit_feats[key].append(positions)
+                    else:
+                        pharmit_feats[key]=[positions]
+                print('rdkit included')
+                if key =='Aromatic':
+                    print(len(rd_matches))
+            except:
+                pass
     return pharmit_feats
 
 def pharm_rec(file):
-    rdmol=rdmolfiles.MolFromPDBFile(file,sanitize=True) 
+    rdmol=rdmolfiles.MolFromPDBFile(file,sanitize=True)
     obmol =next(pybel.readfile("pdb", file))
     pharmit_feat=get_mol_pharm(rdmol,obmol)
     f=open(file.split('_nowat.pdb')[0]+'_pharmfeats_obabel.csv','w')
@@ -68,7 +73,7 @@ def pharm_rec(file):
 if __name__ == '__main__':
     data_dir=sys.argv[1]
     os.chdir(data_dir)
-    pdbs=glob('./*_nowat.pdb')
+    pdbs=glob('./*/*_nowat.pdb')
     for pdb in pdbs:
         print(pdb)
         pharm_rec(pdb)

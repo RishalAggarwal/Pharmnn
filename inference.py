@@ -301,7 +301,7 @@ def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,category_wise,xyz
             score_list=np.array(feat_to_score[category])
             score_rank=np.argsort(score_list)
             if 'Hydrogen' in category:
-                top_ranks=5
+                top_ranks=10
             else:
                 top_ranks=5
             top_ranks=min(top_ranks,len(score_rank))
@@ -323,13 +323,11 @@ def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,category_wise,xyz
 def density_score(predictions,centers,feat_to_coords,feat_to_int,density_distance_threshold=2):
     feat_to_density_scores={}
     for category in feat_to_coords.keys():
+        feat_to_density_scores[category]=[]
         for coord in feat_to_coords[category]:
             distances=distance_matrix(centers,np.expand_dims(coord,axis=0))
             score=np.sum(predictions[distances[:,0]<density_distance_threshold,feat_to_int[category]])
-            if category in feat_to_density_scores.keys():
-                feat_to_density_scores[category].append(score)
-            else:
-                feat_to_density_scores[category]=[score]
+            feat_to_density_scores[category].append(score)
     return feat_to_density_scores
 
 
