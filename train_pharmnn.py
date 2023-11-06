@@ -103,10 +103,8 @@ def log_metrics(prefix, labels, predicts,epoch,category,feat_to_int,int_to_feat,
             metrics[prefix+' '+cname+' AUC'] = sklearn.metrics.roc_auc_score(L, P)
         except ValueError:
             pass
-    if f1_total_test != 0:
-        metrics['Total Test F1'] = f1_total_test
-    if f1_total_train != 0:
-        metrics['Total Train F1'] = f1_total_train
+    metrics['Total Test F1'] = f1_total_test
+    metrics['Total Train F1'] = f1_total_train
     if args.eval_only:
         #confusion matrix
         predicts_conf=(np.array(predicts)>args.prob_threshold).astype(int)
@@ -124,8 +122,11 @@ def log_metrics(prefix, labels, predicts,epoch,category,feat_to_int,int_to_feat,
                     label_matrix[label_matrix<0]=0
                 #Me being lazy, there is probably a better way to get true positives
                 matrix=confusion_matrix(label_matrix,predicts_conf[:,j])
-                cm[i][j]+=matrix[0][0]
-                cm_neg[i][j]+=matrix[1][1]
+                try:
+                    cm[i][j]+=matrix[0][0]
+                    cm_neg[i][j]+=matrix[1][1]
+                except:
+                    continue
         data=[]
         data_neg=[]
         for j, i in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
