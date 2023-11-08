@@ -18,7 +18,7 @@ import numpy as np
 
 def grid_protein(rotate,gmaker,pdb_grid,coords,gcenter):
     if rotate:
-        t = molgrid.Transform(gcenter,random_rotation=True)
+        t = molgrid.Transform(gcenter,random_rotation=False)
         t.forward(coords,coords)
     gmaker.g.forward(gcenter, coords, pdb_grid)        
     

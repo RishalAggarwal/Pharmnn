@@ -68,7 +68,7 @@ def parse_arguments():
     args = parser.parse_args()
     return args
 
-def infer(args):
+def infer(args,inference_dataset=None,protein_feats_df=None):
 
     train_data = args.train_data
     test_data = args.test_data
@@ -98,6 +98,8 @@ def infer(args):
     if len(test_data)>0:
         test_dataset = get_dataset(test_data,None,args,feat_to_int,int_to_feat,dump=False)    
 
+    if args.verbose:
+        print('loading model '+ args.model)
     net= torch.load(args.model)
     net.eval()
 
@@ -118,15 +120,23 @@ def infer(args):
             test_file=open(args.output+"_test.txt",'w')
     
     with torch.no_grad():
+        returned_lists=[]
         if len(train_data)>0:
             if args.verbose:
                 print("training set eval")
-            predict(args,feat_to_int,int_to_feat,train_dataset,net,train_file,matching_category,matching_distance,dataset_file_train)
+            train_feat_to_coords_list,train_feat_to_score_list,train_feat_to_zscore_list=predict(args,feat_to_int,int_to_feat,train_dataset,net,train_file,matching_category,matching_distance,dataset_file_train)
+            returned_lists.append([train_feat_to_coords_list,train_feat_to_score_list,train_feat_to_zscore_list])
         if len(test_data)>0:
             if args.verbose:
                 print("test set eval")
-            predict(args,feat_to_int,int_to_feat,test_dataset,net,test_file,matching_category,matching_distance,dataset_file_test)
-
+            test_feat_to_coords_list,test_feat_to_score_list,test_feat_to_zscore_list=predict(args,feat_to_int,int_to_feat,test_dataset,net,test_file,matching_category,matching_distance,dataset_file_test)
+            returned_lists.append([test_feat_to_coords_list,test_feat_to_score_list,test_feat_to_zscore_list])
+        if inference_dataset is not None:
+            if args.verbose:
+                print("inference set eval")
+            inference_feat_to_coords_list,inference_feat_to_score_list,inference_feat_to_zscore_list=predict(args,feat_to_int,int_to_feat,inference_dataset,net,None,matching_category,matching_distance,None,protein_feats_df)
+            returned_lists.append([inference_feat_to_coords_list,inference_feat_to_score_list,inference_feat_to_zscore_list])
+    return returned_lists
 
 def check_pred(point_prediction,center,matching_category,matching_distance,protein_feats_df,dataset_file,ligand,protein,protein_coords):
     
@@ -167,7 +177,7 @@ def check_pred(point_prediction,center,matching_category,matching_distance,prote
         else:
             return
 
-def reduce_to_spheres(predictions,centers,matching_distance,matching_category,protein_feats_df,feat_to_int):
+def reduce_to_spheres(predictions,centers,matching_distance,matching_category,protein_feats_df,feat_to_int,verbose=False):
     spheres=np.copy(predictions)
     # z scores for raning pharmacophore features
     spheres_z=np.copy(predictions)
@@ -178,13 +188,17 @@ def reduce_to_spheres(predictions,centers,matching_distance,matching_category,pr
     feat_to_sphere_ind={}
     feat_to_distances={}
     for category in matching_distance.keys():
+        if verbose:
+            print('spherical reduction for '+category)
         sub_df=protein_feats_df.loc[protein_feats_df['Feature'] == matching_category[category]]
         prot_feat_coords=sub_df.values[:,1:]
         index=feat_to_int[category]
         if prot_feat_coords.shape[0]==0:
             spheres[:,index]=0
             continue
-        distances=distance_matrix(centers,prot_feat_coords)
+        if verbose:
+            print(centers.shape,prot_feat_coords.shape)
+        distances=distance_matrix(centers,prot_feat_coords,threshold=100000000)
         threshold=matching_distance[category]
         #store distances for mask
         feat_to_distances[category]=distances
@@ -310,8 +324,11 @@ def write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,rank,category_wise,xyz
         feat_to_coords=feat_to_coords_ranked
 
     for category in feat_to_coords.keys():
-        xyz_file_name='/'.join(protein.split('/')[:-1])+'/'+xyz_prefix+"_"+category+'.xyz'
-        xyz_file_name=os.path.join(top_dir,xyz_file_name)
+        try:
+            xyz_file_name='/'.join(protein.split('/')[:-1])+'/'+xyz_prefix+"_"+category+'.xyz'
+            xyz_file_name=os.path.join(top_dir,xyz_file_name)
+        except:
+            xyz_file_name=xyz_prefix+"_"+category+'.xyz'
         xyz_file = open(xyz_file_name,'w')
         coord_set=set()
         for coords in feat_to_coords[category]:
@@ -366,8 +383,11 @@ def write_dx(centers,predicted,resolution,dx_file):
             dx_file.write(" ")
 
 @torch.no_grad()
-def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_category,matching_distance,dataset_file=None):
+def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_category,matching_distance,dataset_file=None,protein_feats_df=None):
 
+    feat_to_coords_list=[]
+    feat_to_score_list=[]
+    feat_to_zscore_list=[]
     complexes=dataset.get_complexes()
     if args.verbose:
         print('num complexes:')
@@ -379,7 +399,7 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
             print(complex)
         ligand=complex[0]
         protein=complex[1]
-        if args.create_dataset or args.spherical:
+        if args.create_dataset or args.spherical and protein_feats_df is None:
             file=protein.split('nowat.pdb')[0]+'pharmfeats_obabel.csv'
             protein_feats_df=pd.read_csv(os.path.join(args.top_dir,file))
         #iterate and fill tensor till batch_size
@@ -424,17 +444,25 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
         
         #spherical reduction
         if args.spherical:
-            spheres, spheres_z, feat_to_sphere_ind, feat_to_distances=reduce_to_spheres(predictions,centers,matching_distance,matching_category,protein_feats_df,feat_to_int)
+            if args.verbose:
+                print('spherical reduction')
+            spheres, spheres_z, feat_to_sphere_ind, feat_to_distances=reduce_to_spheres(predictions,centers,matching_distance,matching_category,protein_feats_df,feat_to_int,args.verbose)
         
             #xyz output
             if args.xyz:
+                if args.verbose:
+                    print('get xyz')
                 feat_to_coords,feat_to_score,feat_to_zscore=get_xyz(spheres,spheres_z,centers,feat_to_sphere_ind,feat_to_distances,feat_to_int,matching_distance,prob_threshold=args.prob_threshold)
                 feat_to_coords,feat_to_score,feat_to_zscore=cluster_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.clus_threshold)
+                feat_to_coords_list.append(feat_to_coords)
+                feat_to_score_list.append(feat_to_score)
+                feat_to_zscore_list.append(feat_to_zscore)
                 if args.density_score:
                     feat_to_density_scores=density_score(predictions,centers,feat_to_coords,feat_to_int,density_distance_threshold=args.density_distance_threshold)
                     for category in feat_to_coords.keys():
                         feat_to_score[category]=feat_to_density_scores[category]
-                write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.xyz_rank,args.category_wise,args.prefix_xyz,protein,args.top_dir)
+                if len(args.prefix_xyz)>0:
+                    write_xyz(feat_to_coords,feat_to_score,feat_to_zscore,args.xyz_rank,args.category_wise,args.prefix_xyz,protein,args.top_dir)
         #output dx files of predictions
         if args.create_dx:     
             if args.round_pred:
@@ -442,13 +470,17 @@ def predict(args,feat_to_int,int_to_feat,dataset,net,output_file,matching_catego
             if args.spherical:
                 predictions=spheres
             for i in range(len(int_to_feat)):
-                dx_file_name='/'.join(protein.split('/')[:-1])+'/'+args.prefix_dx+"_"+int_to_feat[i]+'.dx'
-                dx_file_name=os.path.join(args.top_dir,dx_file_name)
+                try:
+                    dx_file_name='/'.join(protein.split('/')[:-1])+'/'+args.prefix_dx+"_"+int_to_feat[i]+'.dx'
+                    dx_file_name=os.path.join(args.top_dir,dx_file_name)
+                except:
+                    dx_file_name=args.prefix_dx+"_"+int_to_feat[i]+'.dx'
                 dx_file=open(dx_file_name,'w')
                 write_dx(centers,predictions[:,i],dataset.resolution,dx_file)
                 dx_file.close()
+    return feat_to_coords_list,feat_to_score_list,feat_to_zscore_list    
 
 if __name__ == '__main__':
 
     args = parse_arguments()
-    infer(args)
+    returned_lists=infer(args)

@@ -48,12 +48,10 @@ def get_mol_pharm(rdmol,obmol):
                         positions.append(np.array(atoms[idx].coords))
                     positions=np.array(positions).mean(axis=0)
                     if key in pharmit_feats.keys():
-                        pharmit_feats[key].append(positions)
+                        if positions not in pharmit_feats[key]:
+                            pharmit_feats[key].append(positions)
                     else:
                         pharmit_feats[key]=[positions]
-                print('rdkit included')
-                if key =='Aromatic':
-                    print(len(rd_matches))
             except:
                 pass
     return pharmit_feats

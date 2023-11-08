@@ -179,40 +179,17 @@ class PharmacophoreDataset(Dataset):
             t.forward(coords,coords)
         self.gmaker.g.forward(gcenter, coords, pdb_grid)        
     
-    def autobox_ligand(self,sdffile):
-        coords = self.coordcache[sdffile].c.clone().coords.tonumpy()
-        
-        max_x=np.max(coords[:,0])
-        min_x=np.min(coords[:,0])
-        
-        max_y=np.max(coords[:,1])
-        min_y=np.min(coords[:,1])
-        
-        max_z=np.max(coords[:,2])
-        min_z=np.min(coords[:,2])
-        
-        num_x=int((max_x-min_x+2*self.autobox_extend)/0.5)
-        num_y=int((max_y-min_y+2*self.autobox_extend)/0.5)
-        num_z=int((max_z-min_z+2*self.autobox_extend)/0.5)
-        
-        coords_x=np.linspace(min_x-self.autobox_extend,min_x-self.autobox_extend+(num_x/2),num_x+1)
-        coords_y=np.linspace(min_y-self.autobox_extend,min_y-self.autobox_extend+(num_y/2),num_y+1)
-        coords_z=np.linspace(min_z-self.autobox_extend,min_z-self.autobox_extend+(num_z/2),num_z+1)
-        
-        coords_x=torch.tensor(coords_x)
-        coords_y=torch.tensor(coords_y)
-        coords_z=torch.tensor(coords_z)
-        autobox_coords=torch.cartesian_prod(coords_x,coords_y,coords_z).numpy()
-        return autobox_coords
+    
 
     def binding_site_grids(self,pdbfile,sdffile):
-        autobox_coords=self.autobox_ligand(sdffile)
+        ligand_coords = self.coordcache[sdffile].c.clone().coords.tonumpy()
+        autobox_coords=autobox_ligand(ligand_coords,self.autobox_extend)
         coords = self.coordcache[pdbfile].c.clone()
         coords.togpu(True)
         for center in autobox_coords:
             gcenter=tuple(center)
             pdb_grid = torch.zeros(self.dims,dtype=torch.float32,device="cuda")
-            self.grid_protein(pdb_grid,coords,gcenter)
+            grid_protein(pdb_grid,coords,gcenter,self.gmaker,self.rotate)
             yield center,pdb_grid
     
     def get_complexes(self):
@@ -285,3 +262,91 @@ class NegativesDataset(Dataset):
         return pharm_data_item 
     
 
+class Inference_Dataset(Dataset):
+
+    def __init__(self,receptor,ligand,feature_points=None,auto_box_extend=4,grid_dimension=5,resolution=0.5,rotate=False):
+        super(Inference_Dataset, self).__init__()
+        self.receptor=receptor
+        self.ligand=ligand
+        self.receptor_coords=MyCoordinateSet(self.receptor)
+        self.ligand_coords=MyCoordinateSet(self.ligand)
+        self.auto_box_extend=auto_box_extend
+        self.gmaker=MyGridMaker(resolution=resolution, dimension=grid_dimension)
+        self.dims = self.gmaker.g.grid_dimensions(molgrid.defaultGninaReceptorTyper.num_types())
+        self.rotate=rotate
+        self.points=None
+        self.resolution=resolution
+
+    def __getitem__(self, index):
+        pdb_grid = torch.zeros(self.dims,dtype=torch.float32,device="cuda")
+        coords = self.receptor_coords.c.clone()
+        coords.togpu(True)
+        center=self.points.loc[index][1:4]
+        center=tuple(center.tolist())
+        grid_protein(pdb_grid,coords,center,self.gmaker,self.rotate)
+        return {'grid': pdb_grid}
+
+    def __len__(self):
+        return len(self.points)
+
+    def get_complexes(self):
+        return [[self.ligand_coords,self.receptor_coords]]
+    
+    def binding_site_grids(self,receptor,ligand):
+        ligand_coords = ligand.c.clone().coords.tonumpy()
+        autobox_coords=autobox_ligand(ligand_coords,self.auto_box_extend)
+        coords = receptor.c.clone()
+        coords.togpu(True)
+        for center in autobox_coords:
+            gcenter=tuple(center)
+            pdb_grid = torch.zeros(self.dims,dtype=torch.float32,device="cuda")
+            grid_protein(pdb_grid,coords,gcenter,self.gmaker,self.rotate)
+            yield center,pdb_grid
+
+    def add_points(self,points):
+        if self.points is None:
+            self.points=points
+        else:
+            self.points=pd.concat([self.points,points],axis=0)
+        #TODO cluster points of same class
+    
+    def get_points(self):
+        return np.array(self.points)
+
+
+            
+        
+        
+
+
+
+
+def autobox_ligand(coords,autobox_extend=4):    
+    max_x=np.max(coords[:,0])
+    min_x=np.min(coords[:,0])
+    
+    max_y=np.max(coords[:,1])
+    min_y=np.min(coords[:,1])
+    
+    max_z=np.max(coords[:,2])
+    min_z=np.min(coords[:,2])
+    
+    num_x=int((max_x-min_x+2*autobox_extend)/0.5)
+    num_y=int((max_y-min_y+2*autobox_extend)/0.5)
+    num_z=int((max_z-min_z+2*autobox_extend)/0.5)
+    
+    coords_x=np.linspace(min_x-autobox_extend,min_x-autobox_extend+(num_x/2),num_x+1)
+    coords_y=np.linspace(min_y-autobox_extend,min_y-autobox_extend+(num_y/2),num_y+1)
+    coords_z=np.linspace(min_z-autobox_extend,min_z-autobox_extend+(num_z/2),num_z+1)
+    
+    coords_x=torch.tensor(coords_x)
+    coords_y=torch.tensor(coords_y)
+    coords_z=torch.tensor(coords_z)
+    autobox_coords=torch.cartesian_prod(coords_x,coords_y,coords_z).numpy()
+    return autobox_coords
+
+def grid_protein(pdb_grid,coords,gcenter,gmaker,rotate=True):
+    if rotate:
+        t = molgrid.Transform(gcenter,random_rotation=True)
+        t.forward(coords,coords)
+    gmaker.g.forward(gcenter, coords, pdb_grid) 
