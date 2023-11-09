@@ -306,8 +306,10 @@ class Inference_Dataset(Dataset):
     def add_points(self,points):
         if self.points is None:
             self.points=points
+        #concatenate rows of new dataframe (except for first row which is the label)
         else:
-            self.points=pd.concat([self.points,points],axis=0)
+            self.points.append(points,ignore_index=True)
+        self.points.reset_index(drop=True,inplace=True)
         #TODO cluster points of same class
     
     def get_points(self):
