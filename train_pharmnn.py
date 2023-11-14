@@ -21,9 +21,6 @@ import torch.optim as optim
 import argparse
 import multiprocessing, time
 import pickle
-import se3cnn
-from se3cnn.image.convolution import SE3Convolution
-from se3cnn.image.gated_block import GatedBlock
 from model import GISTNet, weights_init
 from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset,NegativesDataset
 from sklearn.metrics import confusion_matrix
@@ -69,7 +66,6 @@ def parse_arguments():
     parser.add_argument('--prob_threshold', type=float,default=0.5,help='probability threshold for metrics')
     parser.add_argument('--use_gist', type=int,default=0,help='use gist grids')
     parser.add_argument('--rotate', type=int,default=1,help='random rotations of pdb grid')
-    parser.add_argument('--use_se3', type=int,default=0,help='use se3 convolutions')
     parser.add_argument('--seed',default=42,type=int,help='random seed')
     parser.add_argument('--verbose',help="verbse complex working on",action='store_true')
 

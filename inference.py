@@ -16,9 +16,6 @@ import torch.optim as optim
 import argparse
 import multiprocessing, time
 import pickle
-import se3cnn
-from se3cnn.image.convolution import SE3Convolution
-from se3cnn.image.gated_block import GatedBlock
 from model import GISTNet, weights_init
 from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset
 from train_pharmnn import get_dataset

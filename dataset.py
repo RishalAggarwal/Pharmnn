@@ -22,6 +22,7 @@ try:
     from molgrid.openbabel import pybel
 except ImportError:
     from openbabel import pybel
+from sklearn.cluster import AgglomerativeClustering
 
 import random
 #add pickle support to CoordinateSet
@@ -310,7 +311,32 @@ class Inference_Dataset(Dataset):
         else:
             self.points.append(points,ignore_index=True)
         self.points.reset_index(drop=True,inplace=True)
-        #TODO cluster points of same class
+        #clustering jumbles up points
+        #TODO deal with points with multiple features
+        clustering = AgglomerativeClustering(n_clusters=None,compute_full_tree=True,linkage='average',distance_threshold=1.5)
+        df_new=None
+        for feature in self.points.iloc[:,0].unique():
+            df_subset=self.points[self.points.iloc[:,0]==feature]
+            #obtain cluster positions
+            clustering.fit(df_subset.iloc[:,1:4])
+            df_subset['Cluster']=clustering.labels_
+            #obtain cluster centers
+            df_subset=df_subset.groupby('Cluster').mean()
+            df_subset['Feature']=feature
+            #make feature column first column
+            cols = df_subset.columns.tolist()
+            cols = cols[-1:] + cols[:-1]
+            df_subset=df_subset[cols]
+            if df_new is None:
+                #create dataframe with Feature, x,y,z of each cluster center
+                df_new=df_subset
+            else:
+                df_new=df_new.append(df_subset)
+        self.points=df_new
+        #remove duplicate rows
+        self.points=self.points.drop_duplicates(subset=['x','y','z'])
+        #reset index
+        self.points.reset_index(drop=True,inplace=True)
     
     def get_points(self):
         return np.array(self.points)
