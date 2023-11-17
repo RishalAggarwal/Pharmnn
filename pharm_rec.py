@@ -14,7 +14,8 @@ def get_mol_pharm(rdmol,obmol):
     # define smarts strings
     #use both openbabel and rdkit to get the smarts matches
     smarts={}
-    smarts['Aromatic']=["a1aaaaa1", "a1aaaa1"]
+    #arginine and lysine added to aromatic for cation pi interactions
+    smarts['Aromatic']=["a1aaaaa1", "a1aaaa1","[$(C(N)(N)=N)]", "[$(n1cc[nH]c1)]"]
     smarts['PositiveIon'] = ['[+,+2,+3,+4]',"[$(C(N)(N)=N)]", "[$(n1cc[nH]c1)]"]
     smarts['NegativeIon'] = ['[-,-2,-3,-4]',"C(=O)[O-,OH,OX1]"]
     smarts['HydrogenAcceptor']=["[#7&!$([nX3])&!$([NX3]-*=[!#6])&!$([NX3]-[a])&!$([NX4])&!$(N=C([C,N])N)]","[$([O])&!$([OX2](C)C=O)&!$(*(~a)~a)]"]
