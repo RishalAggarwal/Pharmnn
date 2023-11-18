@@ -265,7 +265,7 @@ class NegativesDataset(Dataset):
 
 class Inference_Dataset(Dataset):
 
-    def __init__(self,receptor,ligand,feature_points=None,auto_box_extend=4,grid_dimension=5,resolution=0.5,rotate=False):
+    def __init__(self,receptor,ligand,feature_points=None,auto_box_extend=4,grid_dimension=5,resolution=0.5,rotate=False,starter_df=None):
         super(Inference_Dataset, self).__init__()
         self.receptor=receptor
         self.ligand=ligand
@@ -277,6 +277,10 @@ class Inference_Dataset(Dataset):
         self.rotate=rotate
         self.points=None
         self.resolution=resolution
+        if starter_df is not None:
+            self.starter_df=starter_df
+            self.points=starter_df
+            self.points['starter']=True
 
     def __getitem__(self, index):
         pdb_grid = torch.zeros(self.dims,dtype=torch.float32,device="cuda")
@@ -307,9 +311,11 @@ class Inference_Dataset(Dataset):
     def add_points(self,points):
         if self.points is None:
             self.points=points
+            self.points['starter']=False
         #concatenate rows of new dataframe (except for first row which is the label)
         else:
-            self.points.append(points,ignore_index=True)
+            points['starter']=False
+            self.points=self.points.append(points,ignore_index=True)
         self.points.reset_index(drop=True,inplace=True)
         #clustering jumbles up points
         #TODO deal with points with multiple features
@@ -317,27 +323,34 @@ class Inference_Dataset(Dataset):
         df_new=None
         for feature in self.points.iloc[:,0].unique():
             df_subset=self.points[self.points.iloc[:,0]==feature]
+            if len(df_subset)==1:
+                df_new=self.add_subset_to_new(df_new,df_subset)
+                continue
             #obtain cluster positions
             clustering.fit(df_subset.iloc[:,1:4])
             df_subset['Cluster']=clustering.labels_
             #obtain cluster centers
-            df_subset=df_subset.groupby('Cluster').mean()
-            df_subset['Feature']=feature
+            df_subset_new=df_subset.groupby('Cluster').mean()
+            df_subset_new['Feature']=feature
+            #make starter column last column be the or of the starter column
+            df_subset_new['starter']=df_subset.groupby('Cluster')['starter'].any()
             #make feature column first column
-            cols = df_subset.columns.tolist()
+            cols = df_subset_new.columns.tolist()
             cols = cols[-1:] + cols[:-1]
-            df_subset=df_subset[cols]
-            if df_new is None:
-                #create dataframe with Feature, x,y,z of each cluster center
-                df_new=df_subset
-            else:
-                df_new=df_new.append(df_subset)
+            df_subset=df_subset_new[cols]
+            df_new=self.add_subset_to_new(df_new,df_subset)
         self.points=df_new
-        #remove duplicate rows
-        self.points=self.points.drop_duplicates(subset=['x','y','z'])
         #reset index
         self.points.reset_index(drop=True,inplace=True)
     
+    def add_subset_to_new(self,df_new,df_subset):
+        if df_new is None:
+            #create dataframe with Feature, x,y,z of each cluster center
+            df_new=df_subset
+        else:
+            df_new=df_new.append(df_subset)
+        return df_new
+
     def get_points(self):
         return np.array(self.points)
 
