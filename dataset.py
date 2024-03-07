@@ -5,7 +5,6 @@ import numpy as np
 import multiprocessing
 import molgrid
 import pickle
-from gridData import Grid
 from random import sample
 try:
     from molgrid.openbabel import pybel
