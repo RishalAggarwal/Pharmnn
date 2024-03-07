@@ -1,19 +1,8 @@
 import torch
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-import torchvision
-from torch.autograd import Variable
-from torchvision import transforms, utils
-from torch.optim.lr_scheduler import StepLR
-import sklearn.metrics
-import wandb
+from torch.utils.data import Dataset
 import pandas as pd
 import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.nn.init as init
-import torch.optim as optim
-import argparse
-import multiprocessing, time
+import multiprocessing
 import molgrid
 import pickle
 from gridData import Grid
@@ -24,7 +13,6 @@ except ImportError:
     from openbabel import pybel
 from sklearn.cluster import AgglomerativeClustering
 
-import random
 #add pickle support to CoordinateSet
 class MyCoordinateSet:
     
