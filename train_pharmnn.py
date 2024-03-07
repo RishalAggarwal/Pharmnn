@@ -6,23 +6,18 @@ from numpy import argmax
 from numpy import array
 import sys,os
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-import torchvision
-from torch.autograd import Variable
-from torchvision import transforms, utils
+from torch.utils.data import  DataLoader
 from torch.optim.lr_scheduler import StepLR
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import sklearn.metrics
 import wandb
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.nn.init as init
 import torch.optim as optim
 import argparse
-import multiprocessing, time
+import time
 import pickle
 from model import GISTNet, weights_init
-from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset,NegativesDataset
+from dataset import PharmacophoreDataset,NegativesDataset
 from sklearn.metrics import confusion_matrix
 import itertools
 

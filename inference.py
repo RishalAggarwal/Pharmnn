@@ -1,28 +1,12 @@
 import torch
 import numpy as np
-from numpy import argmax
-from numpy import array
-import sys,os
+import os
 import pandas as pd
-from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-from torch.autograd import Variable
-from torch.optim.lr_scheduler import StepLR
-import sklearn.metrics
-import wandb
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.init as init
-import torch.optim as optim
-import argparse
-import multiprocessing, time
-import pickle
-from model import GISTNet, weights_init
-from dataset import MyCoordinateSet, MyGridMaker,PharmacophoreDataset
 from train_pharmnn import get_dataset
 from scipy.spatial import distance_matrix
 from skimage.measure import label
 from sklearn.cluster import AgglomerativeClustering
-import molgrid
 try:
     from molgrid.openbabel import pybel
 except ImportError:
