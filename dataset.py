@@ -87,20 +87,20 @@ class PharmacophoreDataset(Dataset):
                         self.weights[index] += c_weight[feat_to_int[lname]]
             
             #load gist grids in parallel
-            pool = multiprocessing.Pool()
-            gists = pool.map(PharmacophoreDataset.load_dx, zip(grid_centers, dx_paths))
-            pool.close()
+            # pool = multiprocessing.Pool()
+            # gists = pool.map(PharmacophoreDataset.load_dx, zip(grid_centers, dx_paths))
+            # pool.close()
 
             self.cache = []
             self.coordcache = dict()
-            for lnames, fcoord, gcoord, pdbfile,sdffile, gistcenter in zip(labels, centers, grid_centers, pdb_paths,sdf_paths, gists):
-                gist,gcenter = gistcenter
+            for lnames, fcoord, gcoord, pdbfile,sdffile in zip(labels, centers, grid_centers, pdb_paths,sdf_paths):
+            #    gist,gcenter = gistcenter
                 feat_label = np.zeros(len(feat_to_int))
                 for lname in lnames.split(':'):
                     if lname in feat_to_int:
                         feat_label[feat_to_int[lname]] = 1.0
-                if gist.size == 0: #don't have gist grids, use feature as center
-                    gcenter = tuple(fcoord)
+            #    if gist.size == 0: #don't have gist grids, use feature as center
+                gcenter = tuple(fcoord)
                 if pdbfile not in self.coordcache:
                     self.coordcache[pdbfile] = MyCoordinateSet(coord_reader.make_coords(pdbfile))
                 if sdffile not in self.coordcache:
@@ -110,33 +110,32 @@ class PharmacophoreDataset(Dataset):
                                     'gcoord': gcoord,
                                     'gcenter': gcenter,
                                     'pdbfile': pdbfile,
-                                    'sdffile': sdffile,
-                                    'gist': torch.FloatTensor(gist)})
+                                    'sdffile': sdffile})
         print("data loaded")
     
         
-    @staticmethod
-    def load_dx(x):
-        gridCoord,dx_paths = x
-        # grid coordinates for GIST
-        i = int(gridCoord[0])
-        j = int(gridCoord[1])
-        k = int(gridCoord[2])
+    # @staticmethod
+    # def load_dx(x):
+    #     gridCoord,dx_paths = x
+    #     # grid coordinates for GIST
+    #     i = int(gridCoord[0])
+    #     j = int(gridCoord[1])
+    #     k = int(gridCoord[2])
                 
-        gist_grids = []
+    #     gist_grids = []
         
-        gcenter = (0,0,0)
-        # GIST DATA
-        for dx_file in dx_paths:
-            g = Grid(dx_file)
-            subgrid = g.grid[i-5:i+6, j-5:j+6, k-5:k+6]
-            gist_grids.append(subgrid)        
-            gcenter = g.origin + g.delta*(i,j,k) # realign centers
+    #     gcenter = (0,0,0)
+    #     # GIST DATA
+    #     for dx_file in dx_paths:
+    #         g = Grid(dx_file)
+    #         subgrid = g.grid[i-5:i+6, j-5:j+6, k-5:k+6]
+    #         gist_grids.append(subgrid)        
+    #         gcenter = g.origin + g.delta*(i,j,k) # realign centers
 
-        gist_tensor = np.array(gist_grids,dtype=np.float32)
-        gist_tensor[gist_tensor > 10] = 10
+    #     gist_tensor = np.array(gist_grids,dtype=np.float32)
+    #     gist_tensor[gist_tensor > 10] = 10
         
-        return gist_tensor, tuple(gcenter)            
+    #     return gist_tensor, tuple(gcenter)            
         
     def __getitem__(self, index):
         example = self.cache[index]
@@ -146,12 +145,7 @@ class PharmacophoreDataset(Dataset):
         mask=torch.ones(len(self.int_to_feat))
         coords.togpu(True)
         self.grid_protein(pdb_grid,coords,example['gcenter'])
-        if self.use_gist:
-            return {'label': example['label'],
-                    'grid': torch.concat([example['gist'],pdb_grid],axis=0)
-                    }
-        else:
-            return {'label': torch.tensor(example['label']),
+        return {'label': torch.tensor(example['label']),
                     'grid': pdb_grid,
                     'mask': mask,
                     'center': example['gcenter'],
