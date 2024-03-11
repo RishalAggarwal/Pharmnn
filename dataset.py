@@ -246,7 +246,7 @@ class NegativesDataset(Dataset):
 
 class Inference_Dataset(Dataset):
 
-    def __init__(self,receptor,ligand,feature_points=None,auto_box_extend=4,grid_dimension=5,resolution=0.5,rotate=False,starter_df=None):
+    def __init__(self,receptor,ligand,auto_box_extend=4,grid_dimension=5,resolution=0.5,rotate=False,starter_df=None):
         super(Inference_Dataset, self).__init__()
         self.receptor=receptor
         self.ligand=ligand
@@ -290,6 +290,8 @@ class Inference_Dataset(Dataset):
             yield center,pdb_grid
 
     def add_points(self,points):
+        if points is None:
+            return
         if self.points is None:
             self.points=points
             self.points['starter']=False
