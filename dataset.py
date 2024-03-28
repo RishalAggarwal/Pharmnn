@@ -301,7 +301,6 @@ class Inference_Dataset(Dataset):
             self.points=self.points.append(points,ignore_index=True)
         self.points.reset_index(drop=True,inplace=True)
         #clustering jumbles up points
-        #TODO deal with points with multiple features
         clustering = AgglomerativeClustering(n_clusters=None,compute_full_tree=True,linkage='average',distance_threshold=1.5)
         df_new=None
         for feature in self.points.iloc[:,0].unique():
@@ -314,10 +313,13 @@ class Inference_Dataset(Dataset):
             df_subset['Cluster']=clustering.labels_
             #obtain cluster centers
             df_subset_new=df_subset.groupby('Cluster').mean()
-            df_subset_new['Feature']=feature
-            #make starter column last column be the or of the starter column
+            #maintain starter features
             df_subset_new['starter']=df_subset.groupby('Cluster')['starter'].any()
+             #last vector is from most recently added points
+            df_subset_new['vector']=df_subset.groupby('Cluster')['vector'].last()
+            df_subset_new['svector']=df_subset.groupby('Cluster')['svector'].last()
             #make feature column first column
+            df_subset_new['Feature']=feature
             cols = df_subset_new.columns.tolist()
             cols = cols[-1:] + cols[:-1]
             df_subset=df_subset_new[cols]
@@ -335,14 +337,7 @@ class Inference_Dataset(Dataset):
         return df_new
 
     def get_points(self):
-        return np.array(self.points)
-
-
-            
-        
-        
-
-
+        return np.array(self.points[['Feature','x','y','z','starter','vector','svector']])
 
 
 def autobox_ligand(coords,autobox_extend=4):    

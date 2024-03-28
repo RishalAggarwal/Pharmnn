@@ -51,7 +51,7 @@ def get_mol_pharm(rdmol,obmol,protein=True):
     pharmit_feats={}
     for key in smarts.keys():
         for smart in smarts[key]:
-            obsmarts = pybel.Smarts(smart) # Matches an ethyl group
+            obsmarts = pybel.Smarts(smart)
             matches = obsmarts.findall(obmol)
             for match in matches:
                 positions=[]
@@ -62,7 +62,7 @@ def get_mol_pharm(rdmol,obmol,protein=True):
                     pharmit_feats[key].append(positions)
                 else:
                     pharmit_feats[key]=[positions]
-            try: 
+            try: #only do it if it works, not really strictly necessary 
                 smarts_mol=MolFromSmarts(smart)
                 rd_matches=rdmol.GetSubstructMatches(smarts_mol,uniquify=True)
                 for match in rd_matches:
@@ -78,6 +78,8 @@ def get_mol_pharm(rdmol,obmol,protein=True):
             except:
                 pass
     return pharmit_feats
+
+
 
 def pharm_rec(file):
     rdmol=rdmolfiles.MolFromPDBFile(file,sanitize=True)
