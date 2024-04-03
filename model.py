@@ -1,11 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
-import torchvision
 from torch.autograd import Variable
-from torchvision import transforms, utils
 from torch.optim.lr_scheduler import StepLR
-import sklearn.metrics
-import wandb
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
