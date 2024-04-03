@@ -9,6 +9,7 @@ from random import sample
 try:
     from molgrid.openbabel import pybel
 except ImportError:
+    from openbabel import openbabel
     from openbabel import pybel
 from sklearn.cluster import AgglomerativeClustering
 
