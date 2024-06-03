@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-from rdkit.Chem import MolFromSmarts,ForwardSDMolSupplier,MolFromPDBFile, AddHs,rdmolfiles
-from rdkit.Chem.rdForceFieldHelpers import UFFGetMoleculeForceField, OptimizeMolecule
+from rdkit.Chem import MolFromSmarts,rdmolfiles
 from glob import glob
 try:
     from molgrid.openbabel import pybel

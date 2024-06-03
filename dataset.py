@@ -313,7 +313,7 @@ class Inference_Dataset(Dataset):
             clustering.fit(df_subset.iloc[:,1:4])
             df_subset['Cluster']=clustering.labels_
             #obtain cluster centers
-            df_subset_new=df_subset.groupby('Cluster').mean()
+            df_subset_new=df_subset.groupby('Cluster').mean(numeric_only=False)
             #maintain starter features
             df_subset_new['starter']=df_subset.groupby('Cluster')['starter'].any()
              #last vector is from most recently added points
